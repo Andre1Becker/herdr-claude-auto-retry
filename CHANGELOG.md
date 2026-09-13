@@ -2,6 +2,10 @@
 
 Notable changes, newest first. This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+- Claude Code's own on-screen furniture no longer arms a wait. The `/resume` session picker and the status-line hint row spell out phrases like `rate limited — wait and retry` and `You've hit your session limit` as plain help text; opening `/resume` while a monitor was armed could park it for hours on a limit that never happened, and a parked monitor stops watching the screen, so the next real limit was missed too.
+
 ## [1.3.0] - 2026-09-02
 
 - A rate-limit resume is never sent to a pane herdr still reports as working; the wait is re-checked until the pane stops. Previously a wait armed while the pane was idle could fire Escape into a turn you had resumed by hand hours later.
