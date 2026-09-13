@@ -23,14 +23,14 @@ function adapter({ text = NORMAL_TEXT, claude = true, present = true, eligible =
   const a = {
     recovered: 0,
     _text: text,
-    _claude: claude,
+    _supported: claude,
     _present: present,
     _eligible: eligible, // true = stopped (idle/blocked/done); false = working
     _blocked: blocked,
     blocked: () => a._blocked,
     exists: () => a._present,
     eligible: () => a._eligible,
-    isClaude: async () => a._claude,
+    supported: async () => a._supported,
     read: async () => a._text,
     recover: async () => {
       a.recovered++;
@@ -369,7 +369,7 @@ test('skips the send when herdr no longer sees a Claude agent', async () => {
   const a = adapter({ text: LIMIT_TEXT, claude: false });
   await processOneTick(state, a, CONFIG, 0);
   const res = await processOneTick(state, a, CONFIG, 3_600_001);
-  assert.equal(res, 'skipped-not-claude');
+  assert.equal(res, 'skipped-unsupported');
   assert.equal(a.recovered, 0);
 });
 

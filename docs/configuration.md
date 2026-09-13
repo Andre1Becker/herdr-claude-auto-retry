@@ -4,7 +4,7 @@ Configuration is optional. Create `claude-auto-retry.json` in herdr's config dir
 
 Running monitors re-read this file every poll, so edits take effect on their own within a few seconds. No restart is needed.
 
-The plugin attaches to every Claude pane herdr reports (except panes whose cwd is under `HERDR_PLUGIN_ROOT`) and reads the last `readLines` lines of each on every poll. That text is held only for the check; the one thing persisted from it is the matched limit line, truncated, in the log.
+The plugin attaches to every supported agent pane herdr reports - Claude Code and Codex - (except panes whose cwd is under `HERDR_PLUGIN_ROOT`) and reads the last `readLines` lines of each on every poll. That text is held only for the check; the one thing persisted from it is the matched limit line, truncated, in the log.
 
 ## Options
 
@@ -19,14 +19,14 @@ The plugin attaches to every Claude pane herdr reports (except panes whose cwd i
 | `transientMaxWaitSeconds` | `300` | Cap on the transient exponential backoff (nudges continue until the error clears). |
 | `handleStuckWorking` | `true` | Take over a pane herdr reports as `working` but that is actually stalled. herdr's `working` is a title-spinner heuristic that can be stale after a connection drop; set this `false` to trust herdr's state absolutely. |
 | `stuckWorkingMinutes` | `5` | How long a `working` pane must show the same transient error as its latest output, with no new output, before it is treated as stalled. A genuinely working pane produces new output well within this window, so it never qualifies. |
-| `retryMessage` | `"Continue where you left off."` | Text typed to resume Claude. Keep it free of detector words (`limit`, `rate`, `overloaded`, ...); it is echoed into the input line, so a trigger word makes the monitor match its own nudge. |
+| `retryMessage` | `"Continue where you left off."` | Text typed to resume the agent. Keep it free of detector words (`limit`, `rate`, `overloaded`, ...); it is echoed into the input line, so a trigger word makes the monitor match its own nudge. |
 | `customPatterns` | `[]` | Extra regexes treated as a usage/subscription limit (waited out). See below. |
 | `customTransientPatterns` | `[]` | Extra regexes treated as a transient server error (short backoff). See below. |
 | `readSource` | `"detection"` | herdr read source: `recent`, `recent-unwrapped`, `visible`, or `detection`. |
 | `readLines` | `40` | Lines read per check. |
 | `dismissMenu` | `true` | Send Escape before resuming, but only when the pane is blocked at a prompt (dismisses the `/rate-limit-options` menu). Never sent to an idle or working pane, where it would interrupt the turn. |
 | `menuDismissDelayMs` | `300` | Pause after Escape. |
-| `verifyInput` | `true` | On recoveries that sent Escape, read back the `❯` input line before Enter and retype the message once if its first character was eaten (Claude Code's vim editor mode runs it as a command). |
+| `verifyInput` | `true` | On recoveries that sent Escape, read back the composer line (`❯` for Claude Code, `›` for Codex) before Enter and retype the message once if its first character was eaten (Claude Code's vim editor mode runs it as a command). |
 | `submitDelayMs` | `400` | Pause between typing the message and pressing Enter. |
 | `eligibleStates` | `["idle","blocked","done"]` | Pane states the plugin may send to. `working` is never allowed (it is stripped in validation); a working pane can still arm a wait when a reset limit is its latest output. |
 | `engagedLabel` | `"retry engaged"` | Label reported on a pane while it waits out a limit. See below for showing it. |
@@ -43,11 +43,11 @@ rows = [["state_icon", "workspace", "tab"], ["agent", "$retry"]]
 
 The token carries a TTL, so it disappears on its own if a monitor dies.
 
-## Adjusting detection when Claude's wording changes
+## Adjusting detection when an agent's wording changes
 
 These patterns run against live screen text on every poll, so keep them simple: a regex with nested quantifiers can hang a monitor on hostile screen content.
 
-Claude Code's on-screen wording is not a stable API. It will change, and a phrasing the plugin looks for can stop matching, so detection quietly stops firing. You do not need to edit code or wait for a release to fix that. Add the new phrasing to one of two config lists, each an array of case-insensitive regular-expression strings:
+The on-screen wording of Claude Code and Codex is not a stable API. It will change, and a phrasing the plugin looks for can stop matching, so detection quietly stops firing. You do not need to edit code or wait for a release to fix that. Add the new phrasing to one of two config lists, each an array of case-insensitive regular-expression strings applied to every agent:
 
 - `customPatterns` - matched as a usage/subscription limit, which the plugin waits out.
 - `customTransientPatterns` - matched as a transient server error, which the plugin retries with short backoff.

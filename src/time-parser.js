@@ -2,8 +2,25 @@
 const RESET_TIME_REGEX = /resets?\s+(?:at\s+)?(?:((?:mon|tue|wed|thu|fri|sat|sun))[a-z]*,?\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s*(?:\(([^)]+)\))?/i;
 const WEEKDAYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
 const RELATIVE_TIME_REGEX = /(?:try again|wait|resets?\s+in)[:\s]\s*(?:for\s+)?(?:in\s+)?(\d+)\s*(hours?|minutes?|mins?|h|m)\b/i;
+const ABSOLUTE_DATE_REGEX = /(?:try again|resets?)\s+(?:at|on)\s+([a-z]{3,9})\.?\s+(\d{1,2})(?:st|nd|rd|th)?,?\s+(\d{4}),?\s+(?:at\s+)?(\d{1,2}):(\d{2})\s*(am|pm)?/i;
+const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
 
 export function parseResetTime(text) {
+  const dateMatch = text.match(ABSOLUTE_DATE_REGEX);
+  if (dateMatch) {
+    const month = MONTHS.indexOf(dateMatch[1].slice(0, 3).toLowerCase());
+    if (month >= 0) {
+      const day = parseInt(dateMatch[2], 10);
+      const year = parseInt(dateMatch[3], 10);
+      let hour = parseInt(dateMatch[4], 10);
+      const minute = parseInt(dateMatch[5], 10);
+      const ampm = dateMatch[6]?.toLowerCase() || null;
+      if (ampm === 'pm' && hour !== 12) hour += 12;
+      if (ampm === 'am' && hour === 12) hour = 0;
+      return { absoluteMs: new Date(year, month, day, hour, minute, 0, 0).getTime() };
+    }
+  }
+
   const absMatch = text.match(RESET_TIME_REGEX);
   if (absMatch) {
     const weekday = absMatch[1] ? WEEKDAYS.indexOf(absMatch[1].toLowerCase()) : null;
@@ -88,6 +105,10 @@ export function calculateWaitMs(parsed, marginSeconds = 60, fallbackHours = 5, n
 
   if (parsed.relative) {
     return parsed.waitMs + marginSeconds * 1000;
+  }
+
+  if (parsed.absoluteMs != null) {
+    return Math.max(0, parsed.absoluteMs - now.getTime()) + marginSeconds * 1000;
   }
 
   let tz;

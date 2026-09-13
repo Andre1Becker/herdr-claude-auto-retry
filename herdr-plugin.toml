@@ -2,7 +2,7 @@ id = "claude-auto-retry"
 name = "Claude Auto Retry"
 version = "1.3.0"
 min_herdr_version = "0.7.5"
-description = "Wait out Anthropic rate limits and auto-resume Claude Code panes, herdr-native (no tmux, no shell wrapper)."
+description = "Wait out provider rate limits and auto-resume Claude Code and Codex panes, herdr-native (no tmux, no shell wrapper)."
 platforms = ["linux", "macos"]
 
 # Commands run through launch.sh (invoked via an absolute /bin/sh) because herdr
@@ -17,7 +17,7 @@ platforms = ["linux", "macos"]
 [[startup]]
 command = ["/bin/sh", "launch.sh", "watch-all"]
 
-# Auto-start a monitor whenever herdr first detects a Claude Code agent in a pane.
+# Auto-start a monitor whenever herdr first detects a supported agent in a pane.
 # This is the install-and-forget path: no shell wrapper, no tmux.
 [[events]]
 on = "pane.agent_detected"
@@ -31,12 +31,12 @@ command = ["/bin/sh", "launch.sh", "hook-agent-detected"]
 on = "pane.agent_status_changed"
 command = ["/bin/sh", "launch.sh", "hook-agent-detected"]
 
-# Attach monitors to every Claude pane already open (run once after install, or
+# Attach monitors to every agent pane already open (run once after install, or
 # bind to a key). The hook above only fires for agents detected after install.
 [[actions]]
 id = "watch-all"
-title = "Claude Auto Retry: watch all Claude panes"
-description = "Attach an auto-retry monitor to every running Claude Code pane."
+title = "Claude Auto Retry: watch all agent panes"
+description = "Attach an auto-retry monitor to every running Claude Code or Codex pane."
 contexts = ["global"]
 command = ["/bin/sh", "launch.sh", "watch-all"]
 
@@ -44,7 +44,7 @@ command = ["/bin/sh", "launch.sh", "watch-all"]
 [[actions]]
 id = "arm"
 title = "Claude Auto Retry: watch this pane"
-description = "Attach an auto-retry monitor to the focused Claude Code pane."
+description = "Attach an auto-retry monitor to the focused Claude Code or Codex pane."
 contexts = ["pane"]
 command = ["/bin/sh", "launch.sh", "arm"]
 

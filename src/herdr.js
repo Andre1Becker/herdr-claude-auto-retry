@@ -1,5 +1,6 @@
 
 import { execFile } from 'node:child_process';
+import { isSupportedAgent, profileFor } from './agents.js';
 
 function herdrBin() {
   return process.env.HERDR_BIN_PATH || 'herdr';
@@ -78,17 +79,29 @@ export function createHerdr() {
     return run(args);
   }
 
-  async function listClaudePanes() {
-    return (await paneList()).filter(isClaudeAgent);
+  async function listAgentPanes() {
+    return (await paneList()).filter(isSupportedAgent);
   }
 
   async function findByTerminalId(terminalId) {
     return (await paneList()).find((p) => p.terminal_id === terminalId) || null;
   }
 
-  return { paneList, paneGet, paneRead, sendText, sendKeys, reportMetadata, listClaudePanes, findByTerminalId };
+  return {
+    paneList,
+    paneGet,
+    paneRead,
+    sendText,
+    sendKeys,
+    reportMetadata,
+    listAgentPanes,
+    listClaudePanes: listAgentPanes,
+    findByTerminalId,
+  };
 }
 
 export function isClaudeAgent(pane) {
-  return !!(pane && typeof pane.agent === 'string' && /claude/i.test(pane.agent));
+  return profileFor(pane)?.id === 'claude';
 }
+
+export { isSupportedAgent, profileFor };
