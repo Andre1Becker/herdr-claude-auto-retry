@@ -6,7 +6,8 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { loadConfig } from '../src/config.js';
 import { createLogger, tailLog } from '../src/logger.js';
-import { createHerdr, isClaudeAgent } from '../src/herdr.js';
+import { createHerdr } from '../src/herdr.js';
+import { isSupportedAgent, profileFor, profileForAgent } from '../src/agents.js';
 import { createMonitorState, carriedState, processOneTick } from '../src/monitor-core.js';
 import { recover } from '../src/recovery.js';
 import { stateDir } from '../src/paths.js';
@@ -85,27 +86,27 @@ async function hookAgentDetected() {
   try {
     const ctx = JSON.parse(process.env.HERDR_PLUGIN_CONTEXT_JSON || '{}');
     const agent = ctx.focused_pane_agent ?? ctx.agent;
-    if (typeof agent === 'string' && agent && !/claude/i.test(agent)) return;
+    if (typeof agent === 'string' && agent && !profileForAgent(agent)) return;
   } catch {}
   const herdr = createHerdr();
   const pane = await herdr.paneGet(paneId);
-  if (!pane || !isClaudeAgent(pane)) return;
+  if (!pane || !isSupportedAgent(pane)) return;
   if (spawnMonitor(pane) === 'spawned') {
     createLogger().info(`${paneHandle(pane)}  detected; starting monitor`);
   }
   if (sweepDue()) {
-    for (const p of await herdr.listClaudePanes()) spawnMonitor(p);
+    for (const p of await herdr.listAgentPanes()) spawnMonitor(p);
   }
 }
 
 async function watchAll() {
   const herdr = createHerdr();
-  const panes = await herdr.listClaudePanes();
+  const panes = await herdr.listAgentPanes();
   let spawned = 0;
   for (const pane of panes) {
     if (spawnMonitor(pane) === 'spawned') spawned++;
   }
-  process.stdout.write(`Claude panes found: ${panes.length}. Monitors starting: ${spawned} (others already running or skipped).\n`);
+  process.stdout.write(`Agent panes found: ${panes.length}. Monitors starting: ${spawned} (others already running or skipped).\n`);
 }
 
 async function arm() {
@@ -120,8 +121,8 @@ async function arm() {
     process.stderr.write(`arm: pane ${paneId} not found.\n`);
     process.exit(1);
   }
-  if (!isClaudeAgent(pane)) {
-    process.stdout.write(`arm: pane ${paneId} is not a Claude Code agent (agent: ${pane.agent || 'none'}); not armed.\n`);
+  if (!isSupportedAgent(pane)) {
+    process.stdout.write(`arm: pane ${paneId} runs no supported agent (agent: ${pane.agent || 'none'}); not armed.\n`);
     return;
   }
   const outcome = spawnMonitor(pane);
@@ -280,9 +281,14 @@ async function monitor() {
       exists: () => true,
       eligible: () => config.eligibleStates.includes(pane.agent_status),
       blocked: () => pane.agent_status === 'blocked',
-      isClaude: async () => isClaudeAgent(pane),
+      supported: async () => isSupportedAgent(pane),
+      profile: () => profileFor(pane) || undefined,
       read: async () => herdr.paneRead(pane.pane_id, { source: config.readSource, lines: config.readLines }),
-      recover: async () => recover(herdr, pane.pane_id, config, { blocked: pane.agent_status === 'blocked' || state.lastKind === 'reset', log: (msg) => logger.info(msg) }),
+      recover: async () => recover(herdr, pane.pane_id, config, {
+        blocked: pane.agent_status === 'blocked' || state.lastKind === 'reset',
+        log: (msg) => logger.info(msg),
+        profile: profileFor(pane) || undefined,
+      }),
     };
 
     try {
@@ -307,7 +313,7 @@ async function monitor() {
       }
       if (result === 'user-continued') logger.info(isTransient ? 'server error cleared; monitoring' : 'limit cleared; monitoring');
       if (result === 'max-retries' && lastResult !== 'max-retries') logger.warn(`max retries (${config.maxRetries}) reached; cooling down`);
-      if (result === 'skipped-not-claude') logger.warn('pane no longer a Claude agent; skipping send');
+      if (result === 'skipped-unsupported') logger.warn('pane no longer runs a supported agent; skipping send');
       lastResult = result;
 
       const nowEngaged = state.status === 'waiting' && (config.eligibleStates.includes(pane.agent_status) || state.lastStuck);

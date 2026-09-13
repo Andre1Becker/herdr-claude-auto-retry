@@ -26,14 +26,14 @@ function adapter({ text = NORMAL_TEXT, claude = true, present = true, eligible =
   const a = {
     recovered: 0,
     _text: text,
-    _claude: claude,
+    _supported: claude,
     _present: present,
     _eligible: eligible, // true = stopped (idle/blocked/done); false = working
     _blocked: blocked,
     blocked: () => a._blocked,
     exists: () => a._present,
     eligible: () => a._eligible,
-    isClaude: async () => a._claude,
+    supported: async () => a._supported,
     read: async () => a._text,
     recover: async () => {
       a.recovered++;
@@ -246,12 +246,12 @@ test('a Claude agent that vanishes at the deadline is retried after a short requ
   await processOneTick(state, a, CONFIG, T0);
   const deadline = state.waitUntil;
 
-  assert.equal(await processOneTick(state, a, CONFIG, deadline + 1), 'skipped-not-claude');
+  assert.equal(await processOneTick(state, a, CONFIG, deadline + 1), 'skipped-unsupported');
   assert.equal(state.waitUntil, deadline + 1 + CONFIG.pollIntervalSeconds * 1000 * 6);
   assert.equal(state.attempts, 0);
   assert.equal(a.recovered, 0);
 
-  a._claude = true; // herdr sees the agent again
+  a._supported = true; // herdr sees the agent again
   assert.equal(await processOneTick(state, a, CONFIG, state.waitUntil + 1), 'retried');
   assert.equal(state.attempts, 1);
   assert.equal(a.recovered, 1);
@@ -474,7 +474,7 @@ test('a missing pollIntervalSeconds never yields a NaN deadline', async () => {
   const s1 = createMonitorState();
   const a1 = adapter({ text: LIMIT_TEXT, eligible: true, claude: false });
   await processOneTick(s1, a1, cfg, T0);
-  assert.equal(await processOneTick(s1, a1, cfg, T0 + HOUR + 1), 'skipped-not-claude');
+  assert.equal(await processOneTick(s1, a1, cfg, T0 + HOUR + 1), 'skipped-unsupported');
   assert.ok(Number.isFinite(s1.waitUntil) && s1.waitUntil > T0 + HOUR, `skip requeue: got ${s1.waitUntil}`);
 
   const s2 = createMonitorState();

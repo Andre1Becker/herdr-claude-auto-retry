@@ -1,3 +1,4 @@
+import { CLAUDE } from './agents.js';
 
 const CSI_REGEX = /\x1b\[[\x20-\x3f]*[\x40-\x7e]/g;
 const OSC_REGEX = /\x1b\][\s\S]*?(?:\x07|\x1b\\)/g;
@@ -12,25 +13,7 @@ export function stripAnsi(text) {
     .replace(CSI_REGEX, '');
 }
 
-const LIMIT_PATTERNS = [
-  /(?:hit|exceeded|reached).*(?:your|the)\s*(?:[\w-]+\s+){0,3}limit/i,
-  /\d+-hour limit/i,
-  /session limit/i,
-  /weekly limit/i,
-  /limit reached/i,
-  /usage limit/i,
-  /out of.*usage/i,
-  /rate limit/i,
-];
-
 const USAGE_WARNING = /\b\d{1,3}%\s+of your\b/i;
-const NOT_A_STOP = /\bfast[- ](?:mode|limit)\b|\bspend limit\b/i;
-
-const RESET_PATTERNS = [
-  /resets?\s+(?:at\s+)?(?:(?:mon|tue|wed|thu|fri|sat|sun)[a-z]*,?\s+)?\d{1,2}(?::\d{2})?\s*(?:am|pm)?/i,
-  /resets?\s+in[:\s]\s*\d/i,
-  /try again in \d+\s*(?:hours?|minutes?|h|m)/i,
-];
 
 const TRANSIENT_PATTERNS = [
   /temporarily limiting requests/i,
@@ -54,49 +37,54 @@ function isTableRow(line) {
   return (line.match(TABLE_ROW_SEPARATORS) || []).length >= 3;
 }
 
-const OUTPUT_LINE = /^\s*[⏺⎿]/u;
-const AGENT_LINE = /^\s*⏺/u;
-const NON_OUTPUT_LINE = /^\s*[⏺⎿❯>]/u;
-const PROMPT_LINE = /^\s*[❯>]/u;
-const CHROME_LINE = /^\s*✻/u;
 const THINKING_LINE = /^\s*\S{0,2}\s*\w+\s+for\s+\d+m?\s?\d*s\b/i;
 
-function outputBlockBounds(lines) {
+function profileOf(profile) {
+  return profile || CLAUDE;
+}
+
+function outputBlockBounds(lines, profile) {
+  const { outputLine, nonOutputLine, chromeLine } = profileOf(profile);
   let start = -1;
   for (let k = lines.length - 1; k >= 0; k--) {
-    if (OUTPUT_LINE.test(lines[k])) { start = k; break; }
+    if (chromeLine && chromeLine.test(lines[k])) continue;
+    if (outputLine.test(lines[k])) { start = k; break; }
   }
   if (start < 0) return null;
   let end = start;
   for (let k = start + 1; k < lines.length; k++) {
     const ln = lines[k];
-    if (ln.trim() === '' || NON_OUTPUT_LINE.test(ln) || THINKING_LINE.test(ln)) break;
+    if (ln.trim() === '' || nonOutputLine.test(ln) || THINKING_LINE.test(ln)) break;
     end = k;
   }
   return { start, end };
 }
 
-export function agentErrorBlock(text) {
-  const block = latestOutputBlock(text);
+export function agentErrorBlock(text, profile) {
+  const p = profileOf(profile);
+  const block = latestOutputBlock(text, p);
   if (block == null) return null;
   const first = block.split('\n')[0];
-  if (!AGENT_LINE.test(first)) return null;
-  return TRANSIENT_PATTERNS.some((p) => p.test(first)) ? block : null;
+  if (!p.agentLine.test(first)) return null;
+  return TRANSIENT_PATTERNS.some((pat) => pat.test(first)) ? block : null;
 }
 
 function toLines(text) {
   return Array.isArray(text) ? text : stripAnsi(text).split('\n');
 }
 
-export function latestOutputBlock(text) {
+export function latestOutputBlock(text, profile) {
   const lines = toLines(text);
-  const bounds = outputBlockBounds(lines);
+  const bounds = outputBlockBounds(lines, profile);
   return bounds ? lines.slice(bounds.start, bounds.end + 1).join('\n') : null;
 }
 
-function detectionRegion(lines) {
-  const bounds = outputBlockBounds(lines);
-  return lines.slice(bounds ? bounds.start : 0).filter((l) => !PROMPT_LINE.test(l) && !CHROME_LINE.test(l));
+function detectionRegion(lines, profile) {
+  const { promptLine, chromeLine } = profileOf(profile);
+  const bounds = outputBlockBounds(lines, profile);
+  return lines
+    .slice(bounds ? bounds.start : 0)
+    .filter((l) => !promptLine.test(l) && !(chromeLine && chromeLine.test(l)));
 }
 
 function compile(customPatterns) {
@@ -123,37 +111,45 @@ function hasNearbyMatch(lines, idx, patterns) {
   return false;
 }
 
-function limitedIn(lines, customPatterns) {
+function isLimitLine(line, profile) {
+  if (USAGE_WARNING.test(line) || profile.notALimit.test(line)) return false;
+  if (isTableRow(line)) return false;
+  return profile.limitPatterns.some((p) => p.test(line));
+}
+
+function limitedIn(lines, customPatterns, profile) {
+  const p = profileOf(profile);
   const custom = compile(customPatterns);
-  if (custom.length > 0 && custom.some((p) => p.test(lines.join('\n')))) return true;
+  if (custom.length > 0 && custom.some((pat) => pat.test(lines.join('\n')))) return true;
   for (let i = 0; i < lines.length; i++) {
-    if (USAGE_WARNING.test(lines[i]) || NOT_A_STOP.test(lines[i])) continue;
-    if (isTableRow(lines[i])) continue;
-    if (LIMIT_PATTERNS.some((p) => p.test(lines[i])) && hasNearbyMatch(lines, i, RESET_PATTERNS)) return true;
+    if (!isLimitLine(lines[i], p)) continue;
+    if (!p.resetRequired || hasNearbyMatch(lines, i, p.resetPatterns)) return true;
   }
   return false;
 }
 
-export function isRateLimited(text, customPatterns = []) {
-  return limitedIn(detectionRegion(toLines(text)), customPatterns);
+export function isRateLimited(text, customPatterns = [], profile) {
+  return limitedIn(detectionRegion(toLines(text), profile), customPatterns, profile);
 }
 
-export function limitInLatestBlock(text, customPatterns = []) {
+export function limitInLatestBlock(text, customPatterns = [], profile) {
   const lines = toLines(text);
-  const bounds = outputBlockBounds(lines);
-  return bounds != null && limitedIn(lines.slice(bounds.start, bounds.end + 1), customPatterns);
+  const bounds = outputBlockBounds(lines, profile);
+  return bounds != null && limitedIn(lines.slice(bounds.start, bounds.end + 1), customPatterns, profile);
 }
 
-export function classifyLimit(text, customPatterns = [], customTransientPatterns = []) {
-  const region = detectionRegion(toLines(text));
-  if (limitedIn(region, customPatterns)) return 'reset';
-  const blob = region.filter((l) => !isTableRow(l) && !NOT_A_STOP.test(l)).join('\n');
+export function classifyLimit(text, customPatterns = [], customTransientPatterns = [], profile) {
+  const p = profileOf(profile);
+  const region = detectionRegion(toLines(text), p);
+  if (limitedIn(region, customPatterns, p)) return 'reset';
+  const blob = region.filter((l) => !isTableRow(l) && !p.notALimit.test(l)).join('\n');
   const transient = TRANSIENT_PATTERNS.concat(compile(customTransientPatterns));
-  return transient.some((p) => p.test(blob)) ? 'transient' : null;
+  return transient.some((pat) => pat.test(blob)) ? 'transient' : null;
 }
 
-export function findRateLimitMessage(text) {
-  const lines = detectionRegion(toLines(text));
+export function findRateLimitMessage(text, profile) {
+  const p = profileOf(profile);
+  const lines = detectionRegion(toLines(text), p);
 
   let limitIdx = -1;
   let lastTransient = -1;
@@ -161,12 +157,13 @@ export function findRateLimitMessage(text) {
   for (let i = 0; i < lines.length; i++) {
     const ln = lines[i];
     if (isTableRow(ln)) continue;
-    if (RESET_PATTERNS.some((p) => p.test(ln))) resets.push(i);
-    if (TRANSIENT_PATTERNS.some((p) => p.test(ln))) lastTransient = i;
-    if (!USAGE_WARNING.test(ln) && !NOT_A_STOP.test(ln) && LIMIT_PATTERNS.some((p) => p.test(ln))) limitIdx = i;
+    if (p.resetPatterns.some((pat) => pat.test(ln))) resets.push(i);
+    if (TRANSIENT_PATTERNS.some((pat) => pat.test(ln))) lastTransient = i;
+    if (isLimitLine(ln, p)) limitIdx = i;
   }
 
   if (limitIdx >= 0) {
+    if (p.resetPatterns.some((pat) => pat.test(lines[limitIdx]))) return lines[limitIdx].trim();
     let best = -1;
     for (const j of resets) {
       if (Math.abs(j - limitIdx) > WINDOW) continue;

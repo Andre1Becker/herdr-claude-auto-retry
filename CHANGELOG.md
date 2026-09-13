@@ -2,6 +2,14 @@
 
 Notable changes, newest first. This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+- Codex panes are monitored too. herdr already detects them; the plugin now carries one screen grammar per agent (`src/agents.js`) instead of assuming Claude's glyphs and wording, and `watch-all`, `arm` and the agent hook accept every supported agent.
+- Codex's `You've hit your usage limit` banner arms a wait even when it names no reset time (the "purchase more credits" wording), and the reset it does name - `try again at Sep 14th, 2026 1:38 AM` - is parsed instead of falling back to a five-hour guess.
+- Codex's `Heads up, you have less than N% of your 5h limit left` notice and its `Approaching rate limits` model-switch prompt never arm a wait: neither stops the session.
+- Claude's `✻` status line is excluded from detection, like the `❯` prompt line already was. It sits directly below the newest output block and regularly carries both a limit word and a time, which was enough to park a pane for hours.
+- The wording checks pass their anchors to `grep` as arguments rather than through `/dev/stdin`, which is not readable in every sandbox; they silently skipped nothing and failed the suite instead.
+
 ## [1.3.0] - 2026-09-02
 
 - A rate-limit resume is never sent to a pane herdr still reports as working; the wait is re-checked until the pane stops. Previously a wait armed while the pane was idle could fire Escape into a turn you had resumed by hand hours later.

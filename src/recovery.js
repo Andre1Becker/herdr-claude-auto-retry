@@ -1,9 +1,10 @@
 
 import { stripAnsi } from './patterns.js';
+import { CLAUDE } from './agents.js';
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-const PROMPT_LINE = /^\s*❯\s?/u;
+const PROMPT_TRAILING_SPACE = /^(\s*\S)\s?/u;
 const BOX_CHARS = /[─━│┃╭╮╰╯┌┐└┘┄┈]/gu;
 const VERIFY_READ_LINES = 12;
 
@@ -11,20 +12,21 @@ function collapse(text) {
   return String(text).replace(/\s+/g, ' ').trim();
 }
 
-export function readInputLine(screen) {
+export function readInputLine(screen, profile = CLAUDE) {
   if (typeof screen !== 'string' || !screen.trim()) return null;
+  const promptLine = profile.inputPrompt;
   const lines = stripAnsi(screen).split('\n');
   let idx = -1;
   for (let i = lines.length - 1; i >= 0; i--) {
-    if (PROMPT_LINE.test(lines[i])) {
+    if (promptLine.test(lines[i])) {
       idx = i;
       break;
     }
   }
   if (idx === -1) return null;
-  const parts = [lines[idx].replace(PROMPT_LINE, '')];
+  const parts = [lines[idx].replace(promptLine, '')];
   for (let i = idx + 1; i < lines.length; i++) {
-    if (PROMPT_LINE.test(lines[i])) break;
+    if (promptLine.test(lines[i])) break;
     const rest = lines[i].replace(BOX_CHARS, '').trim();
     if (!rest) break;
     parts.push(rest);
@@ -32,8 +34,8 @@ export function readInputLine(screen) {
   return collapse(parts.join(' '));
 }
 
-export function classifyTypedInput(screen, message) {
-  const line = readInputLine(screen);
+export function classifyTypedInput(screen, message, profile = CLAUDE) {
+  const line = readInputLine(screen, profile);
   if (line === null) return 'unknown';
   const typed = collapse(message);
   if (typed && line.includes(typed)) return 'intact';
@@ -42,17 +44,17 @@ export function classifyTypedInput(screen, message) {
   return 'unknown';
 }
 
-async function inspectInput(herdr, paneId, config) {
+async function inspectInput(herdr, paneId, config, profile) {
   if (typeof herdr.paneRead !== 'function') return 'unknown';
   try {
     const screen = await herdr.paneRead(paneId, { source: 'visible', lines: VERIFY_READ_LINES, timeoutMs: 1500 });
-    return classifyTypedInput(screen, config.retryMessage);
+    return classifyTypedInput(screen, config.retryMessage, profile);
   } catch {
     return 'unknown';
   }
 }
 
-export async function recover(herdr, paneId, config, { blocked = false, log = null } = {}) {
+export async function recover(herdr, paneId, config, { blocked = false, log = null, profile = CLAUDE } = {}) {
   const escaped = !!(config.dismissMenu && blocked);
   if (escaped) {
     await herdr.sendKeys(paneId, 'esc');
@@ -62,12 +64,12 @@ export async function recover(herdr, paneId, config, { blocked = false, log = nu
   await delay(config.submitDelayMs);
 
   if (escaped && config.verifyInput) {
-    if ((await inspectInput(herdr, paneId, config)) === 'eaten') {
+    if ((await inspectInput(herdr, paneId, config, profile)) === 'eaten') {
       await herdr.sendKeys(paneId, 'ctrl+u');
       await delay(config.menuDismissDelayMs);
       await herdr.sendText(paneId, config.retryMessage);
       await delay(config.submitDelayMs);
-      const after = await inspectInput(herdr, paneId, config);
+      const after = await inspectInput(herdr, paneId, config, profile);
       log?.(after === 'intact' ? 'input repaired (vim normal mode ate the first character)' : `input still not verified (${after}); submitting as typed`);
     }
   }
