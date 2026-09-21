@@ -1,5 +1,5 @@
 
-const RESET_TIME_REGEX = /resets?\s+(?:at\s+)?(?:((?:mon|tue|wed|thu|fri|sat|sun))[a-z]*,?\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s*(?:\(([^)]+)\))?/i;
+const RESET_TIME_REGEX = /(?:resets?\s+(?:at\s+)?|try again\s+at\s+)(?:((?:mon|tue|wed|thu|fri|sat|sun))[a-z]*,?\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s*(?:\(([^)]+)\))?/i;
 const WEEKDAYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
 const RELATIVE_TIME_REGEX = /(?:try again|wait|resets?\s+in)[:\s]\s*(?:for\s+)?(?:in\s+)?(\d+)\s*(hours?|minutes?|mins?|h|m)\b/i;
 const ABSOLUTE_DATE_REGEX = /(?:try again|resets?)\s+(?:at|on)\s+([a-z]{3,9})\.?\s+(\d{1,2})(?:st|nd|rd|th)?,?\s+(\d{4}),?\s+(?:at\s+)?(\d{1,2}):(\d{2})\s*(am|pm)?/i;

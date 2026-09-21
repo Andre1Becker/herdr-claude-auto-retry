@@ -2,6 +2,23 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseResetTime, calculateWaitMs } from '../src/time-parser.js';
 
+test('parses Codex try-again clock time', () => {
+  assert.deepEqual(
+    parseResetTime(
+      "You've hit your usage limit. Visit https://chatgpt.com/codex/settings/usage " +
+        'to purchase more credits or try again at 7:00 PM.',
+    ),
+    { hour: 19, minute: 0, timezone: null, ambiguous: false, weekday: null },
+  );
+});
+
+test('keeps try-again durations relative', () => {
+  assert.deepEqual(parseResetTime('try again 5 minutes'), {
+    relative: true,
+    waitMs: 5 * 60_000,
+  });
+});
+
 const HOUR = 3_600_000;
 
 test('parses absolute time with timezone', () => {
